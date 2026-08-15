@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -193,33 +193,51 @@ function TreeRow({
 }
 
 export function FileBrowser({ files, loading, onRefresh }: FileBrowserProps) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expandedOverrides, setExpandedOverrides] = useState<Set<string>>(
+    new Set()
+  );
+  const [collapsedDefaults, setCollapsedDefaults] = useState<Set<string>>(
+    new Set()
+  );
   const [previewFile, setPreviewFile] = useState<FileEntry | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<FileEntry | null>(null);
 
-  // Auto-expand top-level folders whenever the file list changes, so runs/
-  // is visible immediately after a fresh fetch.
-  useEffect(() => {
+  const defaultExpanded = useMemo(() => {
     const tree = buildFileTree(files);
-    const topFolders = tree
-      .filter((n): n is TreeFolder => n.type === "folder")
-      .map((f) => f.path);
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      for (const p of topFolders) next.add(p);
-      return next;
-    });
+    return new Set(
+      tree
+        .filter((n): n is TreeFolder => n.type === "folder")
+        .map((f) => f.path)
+    );
   }, [files]);
 
+  const expanded = useMemo(() => {
+    const next = new Set(expandedOverrides);
+    for (const path of defaultExpanded) {
+      if (!collapsedDefaults.has(path)) next.add(path);
+    }
+    return next;
+  }, [collapsedDefaults, defaultExpanded, expandedOverrides]);
+
   const toggleFolder = useCallback((path: string) => {
-    setExpanded((prev) => {
+    if (defaultExpanded.has(path)) {
+      setCollapsedDefaults((prev) => {
+        const next = new Set(prev);
+        if (next.has(path)) next.delete(path);
+        else next.add(path);
+        return next;
+      });
+      return;
+    }
+
+    setExpandedOverrides((prev) => {
       const next = new Set(prev);
       if (next.has(path)) next.delete(path);
       else next.add(path);
       return next;
     });
-  }, []);
+  }, [defaultExpanded]);
 
   const handleDownload = async (file: FileEntry) => {
     try {
